@@ -4,11 +4,11 @@
 /*
 * Based on a video walkthrough tutorial by Dave Poo.
 * This program approximately emulates a 6502 microprocessor from ~40 years ago.
-* 
+*
 * This project is done with the intent to get a guided experience through
 * more complex code than previous self-driven projects and dip my toes into
 * simulation and emulation.
-* 
+*
 * Start Date: 11/6/2023
 * Completion Date:
 */
@@ -28,7 +28,7 @@ struct Memory
 	void Init()
 	{
 		//Change all possible memory bits to zero
-		for ( u32 i = 0; i < MAX_MEM; i++ )
+		for (u32 i = 0; i < MAX_MEM; i++)
 		{
 			Data[i] = 0;
 		}
@@ -38,6 +38,11 @@ struct Memory
 	Byte operator[](u32 Address) const
 	{
 		//Address should always be < MAX_MEM
+		return Data[Address];
+	}
+
+	Byte& operator[] (u32 Address)
+	{
 		return Data[Address];
 	}
 };
@@ -57,7 +62,7 @@ struct CPU
 	Byte X, Y;
 
 	//Status Flag initialization start
-	Byte C : 1; 
+	Byte C : 1;
 	Byte Z : 1;
 	Byte I : 1;
 	Byte D : 1;
@@ -89,9 +94,23 @@ struct CPU
 		return Data;
 	}
 
+	Byte ReadByte (u32& Cycles, Byte Address, Memory& memory )
+	{
+		Byte Data = memory[Address];
+		Cycles--;
+		return Data;
+	}
+
 	//Operation codes
 	static constexpr Byte
-		INS_LDA_IM = 0xA9;
+		INS_LDA_IM = 0xA9,
+		INS_LDA_ZP = 0xA5;
+
+	void LDASetStatus()
+	{
+		Z = (A == 0);
+		N = (A & 0b10000000) > 0;
+	}
 
 	void Execute( u32 cpuCycles, Memory& memory)
 	{
@@ -105,9 +124,23 @@ struct CPU
 				{
 					Byte Value = FetchByte(cpuCycles, memory);
 					A = Value;
-					Z = (A == 0);
-					N = (A & 0b10000000) > 0;
+					LDASetStatus();
+
 				} break;
+
+				case INS_LDA_ZP:
+				{
+					Byte ZeroPageAddress = FetchByte(cpuCycles, memory);
+
+					A = ReadByte(cpuCycles, ZeroPageAddress, memory);
+					LDASetStatus();
+
+				}break;
+
+				default:
+				{
+					printf("Instruction not handled %d", Inst);
+				} 
 
 			}
 		}
@@ -129,6 +162,11 @@ int main()
 	u32 cycles = 2;
 
 	myCPU.reset( memory );
+
+	//Inline code for testing; loads Accumulator (A) with 42
+	memory[0xFFFC] = CPU::INS_LDA_IM;
+	memory[0xFFFD] = 0x42;
+	//End of Inline code
 
 	myCPU.Execute( cycles, memory );
 	return 0;
