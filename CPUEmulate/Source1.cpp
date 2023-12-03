@@ -45,6 +45,13 @@ struct Memory
 	{
 		return Data[Address];
 	}
+
+	void WriteWord(u32 Cycles, Word Value, u32& Address)
+	{
+		Data[Address] = Value & 0xFF;
+		Data[Address + 1] = (Value >> 8);
+		Cycles -= 2;
+	}
 };
 
 struct CPU
@@ -101,10 +108,30 @@ struct CPU
 		return Data;
 	}
 
+	Word FetchWord( u32& Cycles, Memory& memory )
+	{
+		//The 6502 processor is little endian
+		Word Data = memory[PC];
+		PC++;
+
+		//Bitwise or the memory[PC] value, shifted left 8 bits
+		Data |= (memory[PC] << 8);
+		PC++;
+
+		//Cycles -2 here, since we've done 2 things
+		Cycles -= 2;
+
+		return Data;
+	}
+
+
+
 	//Operation codes
 	static constexpr Byte
 		INS_LDA_IM = 0xA9,
-		INS_LDA_ZP = 0xA5;
+		INS_LDA_ZP = 0xA5,
+		INS_LDA_ZPX = 0xB5,
+		INS_JSR = 0x20;
 
 	void LDASetStatus()
 	{
@@ -137,6 +164,25 @@ struct CPU
 
 				}break;
 
+				case INS_LDA_ZPX:
+				{
+					Byte ZeroPageAddress = FetchByte(cpuCycles, memory);
+					ZeroPageAddress += X;
+					cpuCycles--;
+					A = ReadByte(cpuCycles, ZeroPageAddress, memory);
+					LDASetStatus();
+				}
+
+				case INS_JSR:
+				{
+					Word SubAddress = FetchWord(cpuCycles, memory);
+					
+					memory.WriteWord(PC-1, SP, cpuCycles);
+
+					PC = SubAddress;
+					cpuCycles--;
+				}
+
 				default:
 				{
 					printf("Instruction not handled %d", Inst);
@@ -159,13 +205,14 @@ int main()
 	CPU myCPU;
 	Memory memory;
 
-	u32 cycles = 2;
+	u32 cycles = 3;
 
 	myCPU.reset( memory );
 
 	//Inline code for testing; loads Accumulator (A) with 42
-	memory[0xFFFC] = CPU::INS_LDA_IM;
+	memory[0xFFFC] = CPU::INS_LDA_ZP;
 	memory[0xFFFD] = 0x42;
+	memory[0x0042] = 0x84;
 	//End of Inline code
 
 	myCPU.Execute( cycles, memory );
